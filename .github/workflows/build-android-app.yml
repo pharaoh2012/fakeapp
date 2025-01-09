@@ -1,0 +1,92 @@
+name: Build Android App
+
+on:
+  workflow_dispatch:
+    inputs:
+      appName:
+        description: 'App Name'
+        required: true
+        default: 'APP'
+      iconUrl:
+        description: 'Icon URL (Optional)'
+        required: false
+      pkgName:
+        description: 'package name'
+        required: true
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup JDK
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: 'gradle'
+
+    - name: Replace app name
+      run: |
+        APP_NAME=${{ github.event.inputs.appName }}
+        sed -i "s/<string name=\"app_name\">.*<\/string>/<string name=\"app_name\">$APP_NAME<\/string>/g" app/src/main/res/values/strings.xml
+
+    - name: Download and replace icon (if provided)
+      if: ${{ github.event.inputs.iconUrl != '' }}
+      run: |
+        ICON_URL=${{ github.event.inputs.iconUrl }}
+        curl -L $ICON_URL -o icon.png
+
+        # 安装Pillow
+        echo "Installing Pillow..."
+        pip install pillow
+        # 生成icon
+        echo "Generating icon..."
+        python3 icon.py
+        # 替换icon
+        echo "Replacing icon..."
+        cp output.png app/src/main/res/drawable/icon.png
+
+
+    - name: Replace applicationId
+      run: |
+        APP_ID=${{ github.event.inputs.pkgName }}
+        sed -i "s/com.pharaoh.fakeapp.replace/$APP_ID/g" app/build.gradle.kts
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    - name: Build Debug APK
+      run: ./gradlew assembleDebug
+
+    - name: Rename APK
+      run: |
+        APP_NAME=${{ github.event.inputs.pkgName }}
+        mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/${APP_NAME}.apk
+
+    - name: Upload Debug APK as Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-apk
+        path: app/build/outputs/apk/debug/*.apk
+
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: app/build/outputs/apk/debug/*.apk
+        name: ${{ github.event.inputs.appName }} ${{ github.event.inputs.pkgName }}
+        tag_name: v${{ github.run_number }}
+        body: |
+          应用名称：${{ github.event.inputs.appName }} 
+          应用包名：${{ github.event.inputs.pkgName }}   
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
