@@ -81,11 +81,12 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: app/build/outputs/apk/debug/*.apk
-        name: ${{ github.event.inputs.appName }} ${{ github.event.inputs.pkgName }}
+        name: ${{ github.event.inputs.pkgName }} ${{ github.event.inputs.appName }}
         tag_name: v${{ github.run_number }}
         body: |
           应用名称：${{ github.event.inputs.appName }} 
-          应用包名：${{ github.event.inputs.pkgName }}   
+          应用包名：[${{ github.event.inputs.pkgName }}](https://app.mi.com/details?id=${{ github.event.inputs.pkgName }})
+          应用图标：![icon](${{ github.event.inputs.iconUrl }})
         draft: false
         prerelease: false
       env:
