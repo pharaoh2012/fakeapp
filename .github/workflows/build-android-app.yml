@@ -86,6 +86,7 @@ jobs:
         body: |
           应用名称：${{ github.event.inputs.appName }} 
           应用包名：[${{ github.event.inputs.pkgName }}](https://app.mi.com/details?id=${{ github.event.inputs.pkgName }})
+          应用详情：[小米商店](https://app.mi.com/details?id=${{ github.event.inputs.pkgName }}) [魅族商店](https://app.meizu.com/apps/public/detail?package_name=${{ github.event.inputs.pkgName }}) [应用宝](https://sj.qq.com/appdetail/${{ github.event.inputs.pkgName }}) [Google Play](https://play.google.com/store/apps/details?id=${{ github.event.inputs.pkgName }})
           应用图标：![icon](${{ github.event.inputs.iconUrl }})
         draft: false
         prerelease: false
