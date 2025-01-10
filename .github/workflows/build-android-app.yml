@@ -13,6 +13,9 @@ on:
       pkgName:
         description: 'package name'
         required: true
+      hookUrl:
+        description: 'Webhook URL (Optional)'
+        required: false
 
 jobs:
   build-apk:
@@ -92,3 +95,17 @@ jobs:
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Send Webhook Notification
+      if: ${{ github.event.inputs.hookUrl != '' }}
+      run: |
+        curl -X POST ${{ github.event.inputs.hookUrl }} \
+        -H "Content-Type: application/json" \
+        -d '{
+          "appName": "${{ github.event.inputs.appName }}",
+          "pkgName": "${{ github.event.inputs.pkgName }}",
+          "runNumber": "${{ github.run_number }}",
+          "iconUrl": "${{ github.event.inputs.iconUrl }}",
+          "releaseUrl": "https://github.com/${{ github.repository }}/releases/tag/v${{ github.run_number }}"
+        }'
+        
