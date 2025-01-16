@@ -1,0 +1,138 @@
+name: Build Android Release App
+
+on:
+  workflow_dispatch:
+    inputs:
+      appName:
+        description: '应用名称'
+        required: true
+        default: 'APP'
+      versionName:
+        description: '版本号(如: 1.0.0)'
+        required: true
+        default: '1.0.0'
+      versionCode:
+        description: '版本代码(如: 1)'
+        required: true
+        default: '9999'
+      iconUrl:
+        description: '图标URL(可选)'
+        required: false
+      pkgName:
+        description: '包名'
+        required: true
+      hookUrl:
+        description: 'Webhook URL(可选)'
+        required: false
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+
+    - name: 设置JDK环境
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: 'gradle'
+
+    - name: 替换应用名称
+      run: |
+        APP_NAME=${{ github.event.inputs.appName }}
+        sed -i "s/<string name=\"app_name\">.*<\/string>/<string name=\"app_name\">$APP_NAME<\/string>/g" app/src/main/res/values/strings.xml
+
+    - name: 替换版本信息
+      run: |
+        VERSION_NAME=${{ github.event.inputs.versionName }}
+        VERSION_CODE=${{ github.event.inputs.versionCode }}
+        sed -i "s/versionCode = .*$/versionCode = $VERSION_CODE/g" app/build.gradle.kts
+        sed -i "s/versionName = \".*\"$/versionName = \"$VERSION_NAME\"/g" app/build.gradle.kts
+
+    - name: 下载并替换图标
+      if: ${{ github.event.inputs.iconUrl != '' }}
+      run: |
+        ICON_URL=${{ github.event.inputs.iconUrl }}
+        curl -L $ICON_URL -o icon.png
+        pip install pillow
+        python3 icon.py
+        cp output.png app/src/main/res/drawable/icon.png
+
+    - name: 替换包名
+      run: |
+        APP_ID=${{ github.event.inputs.pkgName }}
+        sed -i "s/com.pharaoh.fakeapp.replace/$APP_ID/g" app/build.gradle.kts
+
+    - name: 设置签名配置
+      run: |
+        echo "${{ secrets.KEYSTORE_FILE }}" > keystore.jks.base64
+        base64 -d keystore.jks.base64 > app/keystore.jks
+        echo "storeFile=keystore.jks" > signing.properties
+        echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> signing.properties
+        echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> signing.properties
+        echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> signing.properties
+
+    - name: 授予gradlew执行权限
+      run: chmod +x gradlew
+
+    - name: 构建Release APK
+      run: ./gradlew assembleRelease
+
+    - name: 重命名APK
+      run: |
+        APP_NAME=${{ github.event.inputs.pkgName }}
+        VERSION_NAME=${{ github.event.inputs.versionName }}
+        mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/${APP_NAME}_v${VERSION_NAME}.apk
+
+    - name: 上传Release APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-apk
+        path: app/build/outputs/apk/release/*.apk
+
+    - name: 创建Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: app/build/outputs/apk/release/*.apk
+        name: ${{ github.event.inputs.appName }} v${{ github.event.inputs.versionName }}
+        tag_name: v${{ github.event.inputs.versionName }}
+        body: |
+          ### 发布信息
+          - 应用名称：${{ github.event.inputs.appName }}
+          - 版本号：${{ github.event.inputs.versionName }}
+          - 版本代码：${{ github.event.inputs.versionCode }}
+          - 应用包名：${{ github.event.inputs.pkgName }}
+          
+          ### 应用商店链接
+          - [小米商店](https://app.mi.com/details?id=${{ github.event.inputs.pkgName }})
+          - [魅族商店](https://app.meizu.com/apps/public/detail?package_name=${{ github.event.inputs.pkgName }})
+          - [应用宝](https://sj.qq.com/appdetail/${{ github.event.inputs.pkgName }})
+          - [Google Play](https://play.google.com/store/apps/details?id=${{ github.event.inputs.pkgName }})
+          
+          ### 应用图标
+          ![icon](${{ github.event.inputs.iconUrl }})
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: 发送Webhook通知
+      if: ${{ github.event.inputs.hookUrl != '' }}
+      run: |
+        curl -X POST ${{ github.event.inputs.hookUrl }} \
+        -H "Content-Type: application/json" \
+        -d '{
+          "appName": "${{ github.event.inputs.appName }}",
+          "pkgName": "${{ github.event.inputs.pkgName }}",
+          "versionName": "${{ github.event.inputs.versionName }}",
+          "versionCode": "${{ github.event.inputs.versionCode }}",
+          "iconUrl": "${{ github.event.inputs.iconUrl }}",
+          "releaseUrl": "https://github.com/${{ github.repository }}/releases/tag/v${{ github.event.inputs.versionName }}"
+        }'
+        
